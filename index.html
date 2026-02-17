@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Snapping Tower of Hanoi</title>
+    <title>Tap-to-Move Tower of Hanoi</title>
     <style>
         :root {
             --bg: #0f172a;
-            --peg-color: #475569;
+            --peg: #475569;
             --accent: #38bdf8;
             --text: #f8fafc;
         }
 
-        * { box-sizing: border-box; touch-action: none; user-select: none; }
+        * { box-sizing: border-box; touch-action: manipulation; user-select: none; }
 
         body {
-            font-family: system-ui, sans-serif;
+            font-family: system-ui, -apple-system, sans-serif;
             background: var(--bg);
             color: var(--text);
             margin: 0;
@@ -26,84 +26,89 @@
             overflow: hidden;
         }
 
-        .stats { margin: 20px 0; display: flex; gap: 30px; font-weight: bold; font-size: 1.2rem; }
+        .stats { margin: 20px 0; display: flex; gap: 25px; font-size: 1.2rem; font-weight: bold; }
 
         .game-area {
             display: flex;
             justify-content: space-around;
             align-items: flex-end;
             width: 100%;
-            max-width: 600px;
-            height: 350px;
-            position: relative;
+            max-width: 500px;
+            height: 320px;
             padding-bottom: 10px;
-            border-bottom: 10px solid var(--peg-color);
-            border-radius: 0 0 10px 10px;
+            border-bottom: 10px solid var(--peg);
+            border-radius: 0 0 12px 12px;
+            cursor: pointer;
         }
 
-        .peg {
+        .peg-container {
             width: 30%;
             height: 100%;
             display: flex;
             flex-direction: column-reverse;
             align-items: center;
             position: relative;
-            z-index: 1;
         }
 
         /* The Rod */
-        .peg::after {
+        .peg-container::after {
             content: '';
             position: absolute;
             bottom: 0;
-            width: 14px;
+            width: 12px;
             height: 85%;
-            background: var(--peg-color);
+            background: var(--peg);
             border-radius: 10px 10px 0 0;
-            z-index: -1;
+            z-index: 1;
         }
 
         .disk {
             height: 35px;
             border-radius: 8px;
+            z-index: 10;
             display: flex;
             justify-content: center;
             align-items: center;
             font-weight: bold;
             color: white;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-            cursor: grab;
-            transition: transform 0.1s;
-            position: absolute; /* Changed to absolute for better control */
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            transition: all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            margin-bottom: 2px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
 
-        .disk.dragging {
-            z-index: 1000;
-            cursor: grabbing;
-            transform: scale(1.05);
-            box-shadow: 0 15px 30px rgba(0,0,0,0.6);
+        /* When a disk is selected, it "pops up" */
+        .disk.selected {
+            transform: translateY(-60px);
+            box-shadow: 0 10px 20px rgba(56, 189, 248, 0.5);
+            border: 2px solid var(--accent);
+            z-index: 100;
         }
 
-        .controls { margin-top: 40px; }
-        button {
-            padding: 12px 25px;
-            background: var(--accent);
+        .controls { margin-top: 40px; display: flex; gap: 10px; }
+        
+        button, select {
+            padding: 12px 20px;
+            border-radius: 10px;
             border: none;
-            border-radius: 12px;
+            background: #1e293b;
+            color: white;
             font-weight: bold;
-            color: #0f172a;
             cursor: pointer;
         }
+
+        button { background: var(--accent); color: #0f172a; }
 
         #win-modal {
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(15, 23, 42, 0.95);
+            background: rgba(15, 23, 42, 0.98);
+            z-index: 1000;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 2000;
+            text-align: center;
         }
     </style>
 </head>
@@ -111,173 +116,117 @@
 
     <div class="stats">
         <span>Moves: <span id="moves">0</span></span>
-        <span>Time: <span id="time">00:00</span></span>
+        <span>Time: <span id="time">0:00</span></span>
     </div>
 
-    <div class="game-area" id="game-area">
-        <div class="peg" data-idx="0"></div>
-        <div class="peg" data-idx="1"></div>
-        <div class="peg" data-idx="2"></div>
+    <div class="game-area">
+        <div class="peg-container" onclick="handlePegClick(0)" id="peg-0"></div>
+        <div class="peg-container" onclick="handlePegClick(1)" id="peg-1"></div>
+        <div class="peg-container" onclick="handlePegClick(2)" id="peg-2"></div>
     </div>
 
     <div class="controls">
-        <button onclick="init()">Reset Game</button>
+        <select id="disk-count" onchange="init()">
+            <option value="3">3 Disks</option>
+            <option value="4" selected>4 Disks</option>
+            <option value="5">5 Disks</option>
+        </select>
+        <button onclick="init()">Reset</button>
     </div>
 
     <div id="win-modal">
-        <h1 style="color: var(--accent)">WELL DONE!</h1>
-        <p id="win-text"></p>
+        <h1 style="color: var(--accent); font-size: 3rem;">YOU WIN!</h1>
+        <p id="win-details" style="font-size: 1.2rem;"></p>
         <button onclick="init()">Play Again</button>
     </div>
 
     <script>
-        const gameArea = document.getElementById('game-area');
-        const pegs = document.querySelectorAll('.peg');
-        const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
-        
-        let moveCount = 0;
-        let activeDisk = null;
-        let diskStacks = [[], [], []];
-        let startPegIdx = null;
+        let moves = 0;
+        let selectedDisk = null;
         let timer = null;
         let seconds = 0;
+        const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
 
         function init() {
-            moveCount = 0;
+            moves = 0;
             seconds = 0;
-            diskStacks = [[], [], []];
+            selectedDisk = null;
             document.getElementById('moves').innerText = '0';
             document.getElementById('win-modal').style.display = 'none';
-            pegs.forEach(p => p.innerHTML = '');
+            clearInterval(timer);
             
-            const numDisks = 4;
-            for (let i = numDisks; i > 0; i--) {
+            const count = parseInt(document.getElementById('disk-count').value);
+            const pegs = [document.getElementById('peg-0'), document.getElementById('peg-1'), document.getElementById('peg-2')];
+            pegs.forEach(p => p.innerHTML = '');
+
+            for(let i = count; i > 0; i--) {
                 const disk = document.createElement('div');
                 disk.className = 'disk';
+                disk.style.width = (50 + (i * 20)) + 'px';
+                disk.style.backgroundColor = colors[i-1] || colors[0];
                 disk.dataset.size = i;
-                disk.style.width = (60 + (i * 20)) + 'px';
-                disk.style.backgroundColor = colors[i - 1];
                 disk.innerText = i;
-                
-                disk.onmousedown = dragStart;
-                disk.ontouchstart = dragStart;
-                
-                diskStacks[0].push(disk);
-                gameArea.appendChild(disk);
+                pegs[0].appendChild(disk);
             }
-            renderPositions();
             startTimer();
         }
 
-        function renderPositions() {
-            const areaRect = gameArea.getBoundingClientRect();
-            diskStacks.forEach((stack, pIdx) => {
-                const pegRect = pegs[pIdx].getBoundingClientRect();
-                const centerX = pegRect.left + pegRect.width / 2 - areaRect.left;
-                
-                stack.forEach((disk, dIdx) => {
-                    if (disk === activeDisk) return;
-                    
-                    const diskWidth = parseInt(disk.style.width);
-                    disk.style.left = (centerX - diskWidth / 2) + 'px';
-                    disk.style.bottom = (dIdx * 38) + 'px'; // 35px height + 3px gap
-                    disk.style.top = 'auto'; // Reset top if set during drag
-                });
-            });
-        }
+        function handlePegClick(index) {
+            const peg = document.getElementById(`peg-${index}`);
+            const topDisk = peg.lastElementChild;
 
-        function dragStart(e) {
-            const disk = e.target;
-            const currentPegIdx = getDiskPeg(disk);
-
-            // Only top disk
-            if (diskStacks[currentPegIdx].indexOf(disk) !== diskStacks[currentPegIdx].length - 1) return;
-
-            activeDisk = disk;
-            startPegIdx = currentPegIdx;
-            disk.classList.add('dragging');
-
-            const moveHandler = (event) => {
-                const cx = event.type.includes('touch') ? event.touches[0].clientX : event.clientX;
-                const cy = event.type.includes('touch') ? event.touches[0].clientY : event.clientY;
-                const areaRect = gameArea.getBoundingClientRect();
-                
-                // Keep disk centered under finger/mouse
-                disk.style.left = (cx - areaRect.left - disk.offsetWidth / 2) + 'px';
-                disk.style.top = (cy - areaRect.top - disk.offsetHeight / 2) + 'px';
-                disk.style.bottom = 'auto';
-            };
-
-            const stopHandler = (event) => {
-                const cx = event.type.includes('touch') ? event.changedTouches[0].clientX : event.clientX;
-                const cy = event.type.includes('touch') ? event.changedTouches[0].clientY : event.clientY;
-                
-                disk.classList.remove('dragging');
-                finalizeMove(cx, cy);
-                
-                document.removeEventListener('mousemove', moveHandler);
-                document.removeEventListener('touchmove', moveHandler);
-                document.removeEventListener('mouseup', stopHandler);
-                document.removeEventListener('touchend', stopHandler);
-            };
-
-            document.addEventListener('mousemove', moveHandler);
-            document.addEventListener('touchmove', moveHandler);
-            document.addEventListener('mouseup', stopHandler);
-            document.addEventListener('touchend', stopHandler);
-        }
-
-        function finalizeMove(x, y) {
-            let targetIdx = -1;
-            
-            // Detection: which peg is the mouse/finger over?
-            pegs.forEach((peg, idx) => {
-                const rect = peg.getBoundingClientRect();
-                if (x >= rect.left && x <= rect.right) {
-                    targetIdx = idx;
+            if (!selectedDisk) {
+                // Select phase
+                if (topDisk) {
+                    selectedDisk = topDisk;
+                    selectedDisk.classList.add('selected');
                 }
-            });
+            } else {
+                // Place phase
+                const targetSize = topDisk ? parseInt(topDisk.dataset.size) : 99;
+                const selectedSize = parseInt(selectedDisk.dataset.size);
 
-            if (targetIdx !== -1 && isValidMove(activeDisk, targetIdx)) {
-                if (targetIdx !== startPegIdx) {
-                    diskStacks[startPegIdx].pop();
-                    diskStacks[targetIdx].push(activeDisk);
-                    moveCount++;
-                    document.getElementById('moves').innerText = moveCount;
+                if (selectedSize < targetSize) {
+                    // Move disk
+                    peg.appendChild(selectedDisk);
+                    selectedDisk.classList.remove('selected');
+                    if (selectedDisk.parentElement !== peg) { // Only count if moved to new peg
+                         // Logic handled by appendChild automatically
+                    }
+                    moves++;
+                    document.getElementById('moves').innerText = moves;
+                    selectedDisk = null;
+                    checkWin();
+                } else if (selectedDisk.parentElement === peg) {
+                    // Deselect if clicking the same rod
+                    selectedDisk.classList.remove('selected');
+                    selectedDisk = null;
+                } else {
+                    // Invalid move - simple visual feedback
+                    selectedDisk.style.backgroundColor = '#ff0000';
+                    setTimeout(() => {
+                        if(selectedDisk) selectedDisk.style.backgroundColor = colors[selectedSize-1];
+                    }, 300);
                 }
             }
-            
-            activeDisk = null;
-            renderPositions(); // This handles the "Snapping"
-            checkWin();
-        }
-
-        function isValidMove(disk, tIdx) {
-            const stack = diskStacks[tIdx];
-            if (stack.length === 0) return true;
-            const topDisk = stack[stack.length - 1];
-            return parseInt(disk.dataset.size) < parseInt(topDisk.dataset.size);
-        }
-
-        function getDiskPeg(disk) {
-            return diskStacks.findIndex(stack => stack.includes(disk));
         }
 
         function startTimer() {
-            if(timer) clearInterval(timer);
             timer = setInterval(() => {
                 seconds++;
-                const m = Math.floor(seconds/60).toString().padStart(2, '0');
-                const s = (seconds%60).toString().padStart(2, '0');
-                document.getElementById('time').innerText = `${m}:${s}`;
+                let m = Math.floor(seconds/60);
+                let s = seconds % 60;
+                document.getElementById('time').innerText = `${m}:${s < 10 ? '0'+s : s}`;
             }, 1000);
         }
 
         function checkWin() {
-            if (diskStacks[2].length === 4) {
+            const count = parseInt(document.getElementById('disk-count').value);
+            if (document.getElementById('peg-2').childElementCount === count) {
                 clearInterval(timer);
+                document.getElementById('win-details').innerText = 
+                    `Moves: ${moves} | Time: ${document.getElementById('time').innerText}`;
                 document.getElementById('win-modal').style.display = 'flex';
-                document.getElementById('win-text').innerText = `Completed in ${moveCount} moves!`;
             }
         }
 
